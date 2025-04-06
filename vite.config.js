@@ -1,8 +1,18 @@
+
 import path from 'node:path';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
-const configHorizonsViteErrorHandler = `
+  const addTransformIndexHtml = {
+    name: 'add-transform-index-html',
+    transformIndexHtml(html) {
+      return {
+        html,
+        tags: [
+          {
+            tag: 'script',
+            attrs: { type: 'module' },
+            children: `
 const observer = new MutationObserver((mutations) => {
 	for (const mutation of mutations) {
 		for (const addedNode of mutation.addedNodes) {
@@ -47,9 +57,13 @@ function handleViteOverlay(node) {
 		}, '*');
 	}
 }
-`;
-
-const configHorizonsRuntimeErrorHandler = `
+`,
+            injectTo: 'head'
+          },
+          {
+            tag: 'script',
+            attrs: { type: 'module' },
+            children: `
 window.onerror = (message, source, lineno, colno, errorObj) => {
 	window.parent.postMessage({
 		type: 'horizons-runtime-error',
@@ -60,23 +74,13 @@ window.onerror = (message, source, lineno, colno, errorObj) => {
 		error: errorObj && errorObj.stack
 	}, '*');
 };
-`;
-
-const configHorizonsConsoleErrroHandler = `
-const originalConsoleError = console.error;
-console.error = function(...args) {
-	originalConsoleError.apply(console, args);
-
-	const errorString = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ').toLowerCase();
-
-	window.parent.postMessage({
-		type: 'horizons-console-error',
-		error: errorString
-	}, '*');
-};
-`;
-
-const configWindowFetchMonkeyPatch = `
+`,
+            injectTo: 'head'
+          },
+          {
+            tag: 'script',
+            attrs: { type: 'module' },
+            children: `
 const originalFetch = window.fetch;
 
 window.fetch = async function(...args) {
@@ -95,57 +99,54 @@ window.fetch = async function(...args) {
 		throw error;
 	});
 };
-`
+`,
+            injectTo: 'head'
+          },
+          {
+            tag: 'script',
+            attrs: { type: 'module' },
+            children: `
+const originalConsoleError = console.error;
+console.error = function(...args) {
+	originalConsoleError.apply(console, args);
 
+	const errorString = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ').toLowerCase();
 
-const addTransformIndexHtml = {
-	name: 'add-transform-index-html',
-	transformIndexHtml(html) {
-		return {
-			html,
-			tags: [
-				{
-					tag: 'script',
-					attrs: { type: 'module' },
-					children: configHorizonsRuntimeErrorHandler,
-					injectTo: 'head',
-				},
-				{
-					tag: 'script',
-					attrs: { type: 'module' },
-					children: configHorizonsViteErrorHandler,
-					injectTo: 'head',
-				},
-				{
-					tag: 'script',
-					attrs: {type: 'module'},
-					children: configHorizonsConsoleErrroHandler,
-					injectTo: 'head',
-				},
-				{
-					tag: 'script',
-					attrs: { type: 'module' },
-					children: configWindowFetchMonkeyPatch,
-					injectTo: 'head',
-				},
-			],
-		};
-	},
+	window.parent.postMessage({
+		type: 'horizons-console-error',
+		error: errorString
+	}, '*');
 };
+`,
+            injectTo: 'head'
+          },
+        ]
+      }
+    }
+  };
+
 
 export default defineConfig({
-	plugins: [react(), addTransformIndexHtml],
-	server: {
-		cors: true,
-		headers: {
-			'Cross-Origin-Embedder-Policy': 'credentialless',
-		},
-		allowedHosts: true,
-	},
-	resolve: {
-		extensions: ['.jsx', '.js', '.tsx', '.ts', '.json', ],
-		alias: {
-			'@': path.resolve(__dirname, './src'),
-		},
-	},
+  plugins: [addTransformIndexHtml, react()],
+  server: {
+    cors: true,
+    headers: {
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+    },
+  
+    allowedHosts: true
+},
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+  build: {
+    outDir: 'dist',
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+      },
+    },
+  },
 });
